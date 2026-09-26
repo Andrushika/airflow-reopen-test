@@ -40,6 +40,7 @@ jobs:
       github.event.issue.state == 'closed' &&
       !github.event.issue.pull_request.merged_at &&
       github.event.comment.user.type != 'Bot' &&
+      github.event.comment.user.login == github.event.issue.user.login &&
       startsWith(github.event.comment.body, '/reopen')
     steps:
       - name: Reopen PR if the author is under the limit
@@ -50,15 +51,11 @@ jobs:
             const LIMIT = 5;
             const DOCS = 'https://github.com/apache/airflow/blob/main/contributing-docs/' +
               '32_open_pull_request_limit.rst#reopening-a-closed-pull-request';
-            const { comment, issue } = context.payload;
+            const { issue } = context.payload;
             const author = issue.user.login;
             const target = { ...context.repo, issue_number: issue.number };
             const reply = (body) => github.rest.issues.createComment({ ...target, body });
 
-            if (comment.user.login !== author) {
-              await reply('Only the author of this Pull Request can reopen it.');
-              return;
-            }
             const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: issue.number });
             if (pr.state === 'open') {
               return;
