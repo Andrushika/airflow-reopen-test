@@ -49,19 +49,26 @@ jobs:
           script: |
             const LABEL = 'closed because of open PR limit';
             const LIMIT = 5;
-            const DOCS = 'https://github.com/apache/airflow/blob/main/contributing-docs/' +
-              '32_open_pull_request_limit.rst#reopening-a-closed-pull-request';
+            const POLICY = 'https://github.com/apache/airflow/blob/main/contributing-docs/' +
+              '32_open_pull_request_limit.rst';
+            const LIMIT_LINK = `[open Pull Request limit](${POLICY})`;
             const { issue } = context.payload;
             const author = issue.user.login;
             const target = { ...context.repo, issue_number: issue.number };
-            const reply = (body) => github.rest.issues.createComment({ ...target, body });
+            const reply = (...parts) =>
+              github.rest.issues.createComment({ ...target, body: parts.join(' ') });
 
             const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: issue.number });
             if (pr.state === 'open') {
               return;
             }
             if (!pr.labels.some((label) => label.name === LABEL)) {
-              await reply(`\`/reopen\` only works on Pull Requests labeled \`${LABEL}\`.`);
+              await reply(
+                'This Pull Request was not reopened.',
+                '`/reopen` only works for Pull Requests closed in the one-time closure',
+                `for the ${LIMIT_LINK}, which carry the \`${LABEL}\` label.`,
+                'This one does not have it.',
+              );
               return;
             }
             const { data: search } = await github.rest.search.issuesAndPullRequests({
@@ -69,8 +76,11 @@ jobs:
             });
             if (search.total_count >= LIMIT) {
               await reply(
-                `You already have ${search.total_count} open Pull Requests (the limit is ${LIMIT}). ` +
-                'Close or finish one of them, then comment `/reopen` again.',
+                'This Pull Request was not reopened.',
+                `According to the ${LIMIT_LINK}, contributors without write access`,
+                `can have at most ${LIMIT} open Pull Requests at a time (drafts do not count),`,
+                `and you have ${search.total_count} open now.`,
+                'Close or finish one of them, then comment `/reopen` here again.',
               );
               return;
             }
@@ -79,11 +89,19 @@ jobs:
             } catch (error) {
               core.warning(`Could not reopen #${issue.number}: ${error.message}`);
               await reply(
-                'GitHub refused to reopen this Pull Request. The branch must point to the same commit ' +
-                'it had when the Pull Request was closed - it was probably force-pushed or deleted since. ' +
-                `See ${DOCS} for how to open a new Pull Request from the branch instead.`,
+                'This Pull Request could not be reopened.',
+                'GitHub only reopens a Pull Request if its branch still points to the commit it had when the',
+                'Pull Request was closed, and this branch was probably force-pushed or deleted since.',
+                'You can open a new Pull Request from the branch and link this one in the description.',
+                `See [Reopening a closed Pull Request](${POLICY}#reopening-a-closed-pull-request)`,
+                'for the steps.',
               );
               return;
             }
             await github.rest.issues.removeLabel({ ...target, name: LABEL });
-            await reply('Reopened. This does not re-run CI - rebase on `main` and push to run the checks.');
+            await reply(
+              `This Pull Request was closed in the one-time closure for the ${LIMIT_LINK},`,
+              `and your \`/reopen\` comment reopened it. The \`${LABEL}\` label is removed.`,
+              'CI does not run again on reopen,',
+              'so please rebase on the latest `main` and push to run the checks.',
+            );
