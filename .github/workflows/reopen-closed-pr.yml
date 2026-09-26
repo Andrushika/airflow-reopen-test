@@ -90,9 +90,10 @@ jobs:
               core.warning(`Could not reopen #${issue.number}: ${error.message}`);
               await reply(
                 'This Pull Request could not be reopened.',
-                'GitHub only reopens a Pull Request if its branch still points to the commit it had when the',
-                'Pull Request was closed, and this branch was probably force-pushed or deleted since.',
-                'You can open a new Pull Request from the branch and link this one in the description.',
+                'GitHub does not reopen a Pull Request whose branch was deleted or force-pushed',
+                'after it was closed, which is the most likely reason here.',
+                'You can push the branch again if needed, open a new Pull Request from it,',
+                'and link this one in the description.',
                 `See [Reopening a closed Pull Request](${POLICY}#reopening-a-closed-pull-request)`,
                 'for the steps.',
               );
