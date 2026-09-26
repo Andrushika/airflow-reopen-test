@@ -1,0 +1,10 @@
+---
+name: CI probe
+on:  # yamllint disable-line rule:truthy
+  pull_request:
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-slim
+    steps:
+      - run: echo "event=${{ github.event.action }}"
