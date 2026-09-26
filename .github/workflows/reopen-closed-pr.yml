@@ -1,0 +1,92 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+# Temporary: authors without write access cannot reopen a Pull Request closed by a maintainer, so this
+# lets them reopen the ones closed by dev/close_prs_over_open_pr_limit.py. Remove once that one-time
+# closure has settled.
+---
+name: Reopen PR closed by open PR limit
+on:  # yamllint disable-line rule:truthy
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: reopen-${{ github.event.issue.user.login }}
+  queue: max
+
+jobs:
+  reopen:
+    name: "Reopen PR"
+    runs-on: ubuntu-slim
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.issue.state == 'closed' &&
+      !github.event.issue.pull_request.merged_at &&
+      github.event.comment.user.type != 'Bot' &&
+      startsWith(github.event.comment.body, '/reopen')
+    steps:
+      - name: Reopen PR if the author is under the limit
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const LABEL = 'closed because of open PR limit';
+            const LIMIT = 5;
+            const DOCS = 'https://github.com/apache/airflow/blob/main/contributing-docs/' +
+              '32_open_pull_request_limit.rst#reopening-a-closed-pull-request';
+            const { comment, issue } = context.payload;
+            const author = issue.user.login;
+            const target = { ...context.repo, issue_number: issue.number };
+            const reply = (body) => github.rest.issues.createComment({ ...target, body });
+
+            if (comment.user.login !== author) {
+              await reply('Only the author of this Pull Request can reopen it.');
+              return;
+            }
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: issue.number });
+            if (pr.state === 'open') {
+              return;
+            }
+            if (!pr.labels.some((label) => label.name === LABEL)) {
+              await reply(`\`/reopen\` only works on Pull Requests labeled \`${LABEL}\`.`);
+              return;
+            }
+            const { data: search } = await github.rest.search.issuesAndPullRequests({
+              q: `is:pr is:open author:${author} repo:${context.repo.owner}/${context.repo.repo} draft:false`,
+            });
+            if (search.total_count >= LIMIT) {
+              await reply(
+                `You already have ${search.total_count} open Pull Requests (the limit is ${LIMIT}). ` +
+                'Close or finish one of them, then comment `/reopen` again.',
+              );
+              return;
+            }
+            try {
+              await github.rest.pulls.update({ ...context.repo, pull_number: issue.number, state: 'open' });
+            } catch (error) {
+              core.warning(`Could not reopen #${issue.number}: ${error.message}`);
+              await reply(
+                'GitHub refused to reopen this Pull Request. The branch must point to the same commit ' +
+                'it had when the Pull Request was closed - it was probably force-pushed or deleted since. ' +
+                `See ${DOCS} for how to open a new Pull Request from the branch instead.`,
+              );
+              return;
+            }
+            await github.rest.issues.removeLabel({ ...target, name: LABEL });
+            await reply('Reopened. This does not re-run CI - rebase on `main` and push to run the checks.');
