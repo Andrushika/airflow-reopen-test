@@ -1,0 +1,19 @@
+name: draft-probe
+on:
+  workflow_dispatch:
+    inputs:
+      node_id: {required: true}
+      mutation: {required: true}
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ID: ${{ inputs.node_id }}
+          M: ${{ inputs.mutation }}
+        run: |
+          gh api graphql -f id="$ID" -f query="mutation(\$id: ID!) { ${M}(input: {pullRequestId: \$id}) { clientMutationId } }"
